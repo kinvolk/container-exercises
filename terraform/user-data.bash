@@ -14,6 +14,8 @@ apt-get install -y \
   util-linux \
   apt-transport-https \
   ca-certificates \
+  strace \
+  gdb \
   curl \
   git \
   make \
@@ -85,9 +87,43 @@ Type=tmpfs
 WantedBy=multi-user.target
 EOF
 
+cat <<EOF > /bin/sleeper.sh
+#!/bin/sh
+nc -l -p 4242 &
+while true ; do sleep 3600 ; done | nc 127.0.0.1 4242 &
+
+while true ; do
+  date
+  sleep 12
+  if [ -x /tmp/sleeper.sh ] ; then
+    /tmp/sleeper.sh
+  fi
+done
+EOF
+chmod +x /bin/sleeper.sh
+
+cat <<EOF > /etc/systemd/system/sleeper.service
+[Service]
+Type=simple
+ExecStart=/bin/sleeper.sh
+ProtectSystem=strict
+ProtectHome=read-only
+InaccessiblePaths=/usr/sbin
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelTunables=true
+CapabilityBoundingSet=~CAP_NET_RAW
+SystemCallFilter=~unshare
+
+[Install]
+WantedBy=default.target
+EOF
+
 systemctl daemon-reload
 systemctl enable mnt-scratch.automount
 systemctl start mnt-scratch.automount
+systemctl enable sleeper.service
+systemctl start sleeper.service
 systemctl restart docker
 
 usermod -a -G docker ubuntu
